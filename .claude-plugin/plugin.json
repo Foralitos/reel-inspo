@@ -1,0 +1,7 @@
+{
+  "name": "reel-inspo",
+  "version": "0.1.0",
+  "description": "Desglosa reels, TikToks y Shorts que te gustaron (gancho, tomas medidas, ritmo, tipografía, sonido y guion completo) y los guarda en tu vault de Obsidian con canvas y detección de patrones de tu gusto. Local, sin API keys.",
+  "author": { "name": "Fora", "url": "https://github.com/Foralitos" },
+  "keywords": ["reels", "instagram", "tiktok", "obsidian", "inspiration", "video", "guion"]
+}

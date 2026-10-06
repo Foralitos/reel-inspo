@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "reel-inspo",
+  "description": "reel-inspo: inspo de reels para tu vault de Obsidian, dentro de Claude Code.",
+  "owner": { "name": "Fora" },
+  "plugins": [
+    {
+      "name": "reel-inspo",
+      "description": "Desglosa reels/TikToks/Shorts (cómo están hechos + guion) y los guarda en tu vault de Obsidian con canvas y patrones de tu gusto.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
