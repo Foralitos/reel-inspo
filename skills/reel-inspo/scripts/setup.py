@@ -34,6 +34,11 @@ def check(cfg):
     for name, found in rows:
         print(f"{'ok ' if found else 'FALTA'}  {name}" + ("" if found else f"   → {INSTALL_HINTS[name]}"))
         ok &= found or name == "whisper.cpp"  # sin whisper funciona, solo sin transcript
+    version = config.ytdlp_version()
+    if version:
+        print(f"      yt-dlp versión: {version}")
+        if config.ytdlp_viejo(version):
+            print(f"AVISO  es anterior a {config.YTDLP_MIN}. TikTok necesita yt-dlp reciente: pip install -U yt-dlp")
     model = Path(cfg["whisper_model"])
     print(f"{'ok ' if model.exists() else 'FALTA'}  modelo whisper ({model})"
           + ("" if model.exists() else "   → python3 setup.py --download-model"))
