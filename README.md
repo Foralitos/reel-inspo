@@ -52,6 +52,15 @@ https://www.instagram.com/reel/XXXX/  me gustó cómo pone el texto detrás de e
 
 Funciona con varios links a la vez.
 
+## TikTok
+
+Necesita `yt-dlp` al día: con versiones anteriores a 2026.10.26 TikTok no se deja leer.
+`setup.py --check` te muestra la versión y avisa; se actualiza con `pip install -U yt-dlp`.
+
+Los links cortos (`vt.tiktok.com`, `vm.tiktok.com`) funcionan igual. TikTok a veces responde con
+un error intermitente (`Unable to extract universal data for rehydration`): la skill reintenta
+sola hasta 3 veces, así que a veces tarda un poco más. No hacen falta cookies.
+
 ## Qué queda en tu vault
 
 ```

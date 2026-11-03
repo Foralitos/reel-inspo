@@ -41,8 +41,8 @@ python3 SKILL_DIR/scripts/extraer.py "<url>"
 ```
 
 Devuelve un manifest JSON (también en `<cache>/<id>/manifest.json`):
-- **Metadata**: handle, caption, vistas, likes, fecha y música (Instagram a veces no da vistas
-  ni música: pon n/d).
+- **Metadata**: handle, caption, vistas, likes, comentarios, reposts, fecha y música (Instagram
+  a veces no da vistas ni música: pon n/d).
 - **Técnico**: resolución, fps y duración.
 - **Tomas medidas**: cada corte con su segundo, detectado con ffmpeg. Ritmo: cortes por
   segundo, toma promedio, más corta y más larga.
@@ -52,6 +52,14 @@ Devuelve un manifest JSON (también en `<cache>/<id>/manifest.json`):
 
 La descarga va **sin sesión**, a propósito. Si Instagram la bloquea (pasa tras varias seguidas),
 dilo y pide reintentar luego. **Nunca** uses las cookies del navegador del usuario.
+
+**TikTok.** Necesita `yt-dlp` al día: `setup.py --check` avisa si es anterior a 2026.10.26 (se
+actualiza con `pip install -U yt-dlp`; no lo hagas sin preguntar). Los links cortos
+(`vt.tiktok.com`, `vm.tiktok.com`) se resuelven solos: el manifest trae la URL larga en `url` y
+la corta en `url_original`. TikTok a veces responde `Unable to extract universal data for
+rehydration`. Es intermitente: el script reintenta solo hasta 3 veces (10, 20 y 40 s), así que
+puede tardar más de un minuto antes de seguir. Si aun así falla, el mensaje dice qué hacer. No
+hacen falta cookies.
 
 ## 2. Ver y analizar
 
