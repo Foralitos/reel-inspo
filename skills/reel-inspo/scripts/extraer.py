@@ -25,7 +25,8 @@ MAX_FRAMES = 8
 
 
 def run(cmd, **kw):
-    return subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    return subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", **kw)
 
 
 def slug(text, n=40):
@@ -135,7 +136,7 @@ def transcribe(wav, workdir):
     j = Path(f"{base}.json")
     if r.returncode != 0 or not j.exists():
         return {"texto": "", "segmentos": [], "aviso": r.stderr.strip()[-300:]}
-    data = json.loads(j.read_text())
+    data = json.loads(j.read_text(encoding="utf-8", errors="replace"))
     segs = [{"t": round(s["offsets"]["from"] / 1000, 1), "texto": s["text"].strip()}
             for s in data.get("transcription", []) if s["text"].strip()]
     return {"idioma": data.get("result", {}).get("language"),
@@ -179,7 +180,8 @@ def main():
         "workdir": str(workdir),
         "video": str(video),
     }
-    (workdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
+    (workdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps(manifest, ensure_ascii=False, indent=1))
 
 
