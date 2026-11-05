@@ -10,6 +10,9 @@ import json
 import re
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,10 +25,16 @@ WHISPER_MODEL = Path(CFG["whisper_model"])
 MAX_SECONDS = 240
 SCENE_THRESHOLD = 0.3
 MAX_FRAMES = 8
+PAUSAS = (10, 20, 40)  # segundos antes de cada reintento de yt-dlp
+TRANSITORIO = re.compile(r"universal data for rehydration|Unexpected response from webpage request"
+                         r"|timed out|timeout", re.I)
+TIKTOK_CORTO = re.compile(r"https?://(vt|vm)\.tiktok\.com/", re.I)
+TIKTOK_LARGO = re.compile(r"https?://(www\.)?tiktok\.com/@[^/]+/(video|photo)/\d+", re.I)
 
 
 def run(cmd, **kw):
-    return subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
+    return subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", **kw)
 
 
 def slug(text, n=40):
@@ -34,30 +43,76 @@ def slug(text, n=40):
     return re.sub(r"[^a-z0-9]+", "-", text).strip("-")[:n].strip("-") or "reel"
 
 
+def resolver_corto(url):
+    """vt.tiktok.com/XXXX -> tiktok.com/@usuario/video/<id>, sin cookies.
+
+    Si no se puede, regresa la corta tal cual: yt-dlp también la entiende.
+    """
+    if not TIKTOK_CORTO.match(url):
+        return url
+    try:
+        with urllib.request.urlopen(url, timeout=20) as r:
+            largo = r.geturl()
+    except urllib.error.HTTPError as e:  # la redirección ya pasó aunque la página final responda error
+        largo = e.geturl()
+    except OSError as e:
+        print(f"No pude resolver {url} ({e}); sigo con el link corto.", file=sys.stderr)
+        return url
+    largo = (largo or "").split("?")[0]
+    return largo if TIKTOK_LARGO.match(largo) else url
+
+
+def ytdlp(args, url, que):
+    """Corre yt-dlp. Si el error es transitorio reintenta con pausa creciente antes de rendirse."""
+    for i, pausa in enumerate((*PAUSAS, None), 1):
+        r = run([*YTDLP, *args])
+        if r.returncode == 0:
+            return r
+        if pausa is None or not TRANSITORIO.search(r.stderr):
+            break
+        print(f"yt-dlp falló al {que}; reintento {i}/{len(PAUSAS)} en {pausa} s: "
+              f"{r.stderr.strip().splitlines()[-1][:200]}", file=sys.stderr)
+        time.sleep(pausa)
+    error = f"yt-dlp no pudo {que}: {r.stderr.strip()[-400:]}"
+    if "tiktok.com" in url and TRANSITORIO.search(r.stderr):
+        error += (f"\nSeguía fallando tras {len(PAUSAS)} reintentos. Tienes yt-dlp {config.ytdlp_version()}: "
+                  "primero actualízalo (yt-dlp -U o pip install -U yt-dlp). "
+                  "Si ya está al día, TikTok está rechazando la lectura ahora; reintenta en unos minutos.")
+    sys.exit(error)
+
+
 def download(url, workdir):
     if not YTDLP:
         sys.exit("Falta yt-dlp. Corre: python3 setup.py --check")
-    info = run([*YTDLP, "-J", "--no-warnings", url])
-    if info.returncode != 0:
-        sys.exit(f"yt-dlp no pudo leer el reel: {info.stderr.strip()[-400:]}")
+    info = ytdlp(["-J", "--no-warnings", url], url, "leer el reel")
     meta = json.loads(info.stdout)
     if (meta.get("duration") or 0) > MAX_SECONDS:
         sys.exit(f"El video dura {meta['duration']}s, más de {MAX_SECONDS}s.")
-    r = run([*YTDLP, "--no-warnings", "-q", "-f", "mp4/bestvideo+bestaudio/best",
-             "--merge-output-format", "mp4", "-o", workdir / "video.%(ext)s", url])
-    if r.returncode != 0:
-        sys.exit(f"yt-dlp no pudo bajar el video: {r.stderr.strip()[-400:]}")
+    ytdlp(["--no-warnings", "-q", "-f", "mp4/bestvideo+bestaudio/best",
+           "--merge-output-format", "mp4", "-o", workdir / "video.%(ext)s", url], url, "bajar el video")
     video = next(workdir.glob("video.*"))
+    if (meta.get("extractor_key") or "").startswith("TikTok"):
+        # uploader es el @usuario y channel el nombre visible; title es el caption truncado
+        handle = meta.get("uploader") or meta.get("uploader_id") or meta.get("channel") or ""
+        autor = meta.get("channel") or meta.get("uploader") or ""
+        titulo = meta.get("title") or ""
+        caption = meta.get("description") or ("" if titulo.startswith("TikTok video #") else titulo)
+    else:
+        handle = meta.get("channel") or meta.get("uploader_id") or meta.get("uploader") or ""
+        autor = meta.get("uploader") or ""
+        caption = meta.get("description") or ""
     return video, {
         "url": url,
         "id": meta.get("id"),
         "plataforma": meta.get("extractor_key"),
-        "handle": meta.get("channel") or meta.get("uploader_id") or meta.get("uploader") or "",
-        "autor": meta.get("uploader") or "",
-        "caption": (meta.get("description") or "")[:1500],
+        "handle": handle,
+        "autor": autor,
+        "caption": caption[:1500],
         "duracion": meta.get("duration"),
         "vistas": meta.get("view_count"),
         "likes": meta.get("like_count"),
+        "comentarios": meta.get("comment_count"),
+        "reposts": meta.get("repost_count"),
         "fecha_publicado": meta.get("upload_date"),
         "musica": " - ".join(x for x in (meta.get("artist") or meta.get("creator"), meta.get("track")) if x) or None,
     }
@@ -135,7 +190,7 @@ def transcribe(wav, workdir):
     j = Path(f"{base}.json")
     if r.returncode != 0 or not j.exists():
         return {"texto": "", "segmentos": [], "aviso": r.stderr.strip()[-300:]}
-    data = json.loads(j.read_text())
+    data = json.loads(j.read_text(encoding="utf-8", errors="replace"))
     segs = [{"t": round(s["offsets"]["from"] / 1000, 1), "texto": s["text"].strip()}
             for s in data.get("transcription", []) if s["text"].strip()]
     return {"idioma": data.get("result", {}).get("language"),
@@ -143,18 +198,23 @@ def transcribe(wav, workdir):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("url")
     ap.add_argument("--out", default=CFG["cache"])
     a = ap.parse_args()
 
-    url = a.url.split("?")[0]
+    original = a.url.split("?")[0]
+    url = resolver_corto(original)
     workdir = Path(a.out) / slug(url.rstrip("/").split("/")[-1], 30)
     workdir.mkdir(parents=True, exist_ok=True)
     for old in workdir.glob("f*.jpg"):
         old.unlink()
 
     video, meta = download(url, workdir)
+    if url != original:
+        meta["url_original"] = original
     tec = probe(video)
     shots = cuts(video, tec["duracion"])
     frames = keyframes(video, shots, tec["duracion"], workdir)
@@ -179,7 +239,7 @@ def main():
         "workdir": str(workdir),
         "video": str(video),
     }
-    (workdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
+    (workdir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     print(json.dumps(manifest, ensure_ascii=False, indent=1))
 
 

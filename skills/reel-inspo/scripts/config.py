@@ -4,10 +4,12 @@ Se guarda en ~/.config/reel-inspo/config.json (la crea `setup.py --vault <ruta>`
 """
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 CONFIG = Path.home() / ".config" / "reel-inspo" / "config.json"
+YTDLP_MIN = "2026.10.26"           # con versiones anteriores TikTok no se puede leer
 DEFAULTS = {
     "vault": None,                 # ruta absoluta al vault de Obsidian (o cualquier carpeta)
     "base": "10-INSPO",            # carpeta dentro del vault
@@ -39,6 +41,23 @@ def ytdlp_cmd():
         return [sys.executable, "-m", "yt_dlp"]
     except ImportError:
         return None
+
+
+def ytdlp_version():
+    """Versión instalada de yt-dlp, o None si no se pudo leer."""
+    cmd = ytdlp_cmd()
+    if not cmd:
+        return None
+    r = subprocess.run([*cmd, "--version"], capture_output=True, text=True)
+    return (r.stdout.strip() or None) if r.returncode == 0 else None
+
+
+def ytdlp_viejo(version):
+    """True si la versión es anterior a YTDLP_MIN. Compara año.mes.día (las nightly traen más)."""
+    try:
+        return [int(x) for x in version.split(".")[:3]] < [int(x) for x in YTDLP_MIN.split(".")]
+    except ValueError:
+        return False
 
 
 def whisper_cmd():
